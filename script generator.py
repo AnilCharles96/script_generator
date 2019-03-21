@@ -79,7 +79,7 @@ int_to_vocab,vocab_to_int,int_text = pickle.load(open('sherlock_cleaned','rb'))
 vocab_size = len(int_to_vocab)
 
 # hyperparameters
-num_epoch = 300
+num_epoch = 100
 batch_size = 256
 rnn_size = 1024
 seq_length = 16
@@ -89,12 +89,15 @@ lr = 0.001
 from tensorflow.python.client import device_lib 
 print(device_lib.list_local_devices())
 
+# creating a new graph
 graph = tf.Graph()
 with graph.as_default():
+    
+    #inputs and labels
     inputs = tf.placeholder(tf.int32,[None,None],name='inputs')
     targets = tf.placeholder(tf.int32,[None,None],name='target')
-    #learning_rate = tf.placeholder(tf.float32,name='learning_rate')
-
+    
+    # lstm cell 
     input_shape = tf.shape(inputs)
     lstm = tf.contrib.rnn.BasicLSTMCell(rnn_size)
     drop = tf.contrib.rnn.DropoutWrapper(lstm,output_keep_prob=1.0)
@@ -102,6 +105,7 @@ with graph.as_default():
     initial_state = cell.zero_state(input_shape[0],tf.float32)
     initial_state = tf.identity(initial_state,name = 'initial_state')
     
+    # word embeddings
     embedding = tf.Variable(tf.random_normal((vocab_size,rnn_size),-1,1))
     embed = tf.nn.embedding_lookup(embedding,inputs)
 
@@ -116,6 +120,7 @@ with graph.as_default():
     cost = seq2seq.sequence_loss(logits,targets,tf.ones([input_shape[0],input_shape[1]]))
     optimizer = tf.train.AdamOptimizer(learning_rate=lr)
     
+    # gradient clipping
     gradients = optimizer.compute_gradients(cost)
     gradient_clipping = [(tf.clip_by_value(grad,-1.,1.),var) for grad,var in gradients]
     train_op = optimizer.apply_gradients(gradient_clipping)
@@ -138,14 +143,16 @@ def batches(int_text,batch_size,seq_length):
 batches = batches(int_text,batch_size,seq_length)
 
     
-
+# model training 
 with tf.Session(graph=graph) as sess:
     
     saver = tf.train.Saver()
     try :
+        # to resume training if model exist
         load = saver.restore(sess,tf.train.latest_checkpoint('./'))
         graph = tf.get_default_graph()
     except:
+        # new training session
         sess.run(tf.global_variables_initializer())
 
     for epoch in range(num_epoch):
@@ -164,7 +171,7 @@ with tf.Session(graph=graph) as sess:
     saver.save(sess,'model.ckpt')
     print('model trained and saved')
     
-    
+# replacing words with corresponding punctuation
 def replace_tokens():
     
     dict = {}
@@ -191,7 +198,7 @@ def replace_tokens():
 
     return dict
 
-
+# remove unwanted spaces
 def replace_space():
     
     dict ={}
@@ -223,16 +230,20 @@ def replace_space():
     return dict
     
     
-
+# length of newly generated script
 script_length = 200
+
+# word to generate script 
 word = 'danger'
 
 new_graph = tf.Graph()
 with tf.Session(graph=new_graph) as sess:
     
+    # loading training model 
     saver = tf.train.import_meta_graph('model.ckpt.meta')
     saver.restore(sess,tf.train.latest_checkpoint('./'))
     
+    # loading inputs and state from the model
     inputs_tensor = new_graph.get_tensor_by_name('inputs:0')
     initial_state_tensor = new_graph.get_tensor_by_name('initial_state:0')
     final_state_tensor = new_graph.get_tensor_by_name('final_state:0')
@@ -252,6 +263,7 @@ with tf.Session(graph=new_graph) as sess:
         
         generate_word.append(pred_word)
     
+    
     replace_token_dict = replace_tokens()
     remove_space = replace_space()
     script = ' '.join(generate_word)
@@ -262,7 +274,7 @@ with tf.Session(graph=new_graph) as sess:
         script = script.replace(key,value)
         
     
-    
+    # printing script
     time.sleep(10)
     print('\n')
     for word in script:
